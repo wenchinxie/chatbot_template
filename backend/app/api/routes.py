@@ -1,7 +1,7 @@
 from fastapi import APIRouter
-from app.api.models import Product, UserQuery
+from app.api.models import Product, UserQuery,ChatRequest
 from app.services.product_service import get_initial_products
-from app.services.rag_service import get_rag_response, refresh_index
+from app.services.rag_service import get_rag_response, refresh_index,travel_chat
 
 router = APIRouter()
 
@@ -17,3 +17,8 @@ async def query(user_query: UserQuery):
 @router.post("/api/refresh-index")
 async def refresh_rag_index():
     return await refresh_index()
+
+@router.post("/api/chat")
+def chat(chat_request: ChatRequest):
+    return travel_chat(chat_request.message)
+    

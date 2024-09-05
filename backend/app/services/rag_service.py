@@ -4,6 +4,41 @@ import numpy as np
 from typing import List
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import google.generativeai as genai
+from config import settings
+import re
+import pickle
+
+def clean_data_to_dict(data):
+    # Split the data by entries using a regular expression that matches a newline followed by an "id" (start of a new entry)
+    entries = re.split(r'(?<=})\s*(?=id)', data)
+
+    cleaned_entries = []
+
+    for entry in entries:
+        # Remove leading/trailing whitespace
+        entry = entry.strip()
+
+        # Split the entry by newline characters
+        lines = entry.split('\n')
+
+        # Initialize a dictionary for each entry
+        entry_dict = {}
+
+        # Process each line in the entry
+        for line in lines:
+            # Split by the first occurrence of whitespace to separate the key and value
+            key_value = re.split(r'\s{2,}', line.strip(), maxsplit=1)
+            if len(key_value) == 2:
+                key, value = key_value
+                entry_dict[key.strip()] = value.strip()
+        
+        if entry_dict:  # Only add non-empty dictionaries
+            cleaned_entries.append(entry_dict)
+
+    return cleaned_entries
+genai.configure(api_key=settings.gemini_api_key)
+model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
 # Path to your Excel file
 EXCEL_FILE = 'app/data/data.xlsx'
@@ -28,17 +63,19 @@ def create_or_load_index():
         df = pd.read_excel(EXCEL_FILE)
         
         # Convert DataFrame to list of strings
-        documents = [row.to_string() for _, row in df.iterrows()]
+        documents = [row.to_string(index=False) for _, row in df.iterrows()]
         
         # Create index
         index = SimpleVectorIndex(documents)
         
-        # Save index to disk (just save the documents, we'll recreate the index on load)
+        # Save index to disk using pickle
         os.makedirs(PERSIST_DIR, exist_ok=True)
-        pd.Series(documents).to_pickle(os.path.join(PERSIST_DIR, 'documents.pkl'))
+        with open(os.path.join(PERSIST_DIR, 'documents.pkl'), 'wb') as f:
+            pickle.dump(documents, f)
     else:
-        # Load documents from disk and recreate index
-        documents = pd.read_pickle(os.path.join(PERSIST_DIR, 'documents.pkl')).tolist()
+        # Load documents from disk using pickle and recreate index
+        with open(os.path.join(PERSIST_DIR, 'documents.pkl'), 'rb') as f:
+            documents = pickle.load(f)
         index = SimpleVectorIndex(documents)
     
     return index
@@ -64,3 +101,38 @@ async def refresh_index():
     # Recreate index
     index = create_or_load_index()
     return {"message": "Index refreshed successfully"}
+
+def travel_chat(message: str):
+    # Retrieve relevant documents
+    results = index.query(message, top_k=3)  # Get top 3 relevant documents
+    return results # [clean_data_to_dict(doc) for doc, _ in results]
+    # Prepare context from retrieved documents
+    context = "\n".join([doc for doc, _ in results])
+    
+    # Prepare prompt with context and user message
+    prompt = f"""Context information:
+{context}
+
+User message: {message}
+
+Please provide a response based on the context information and the user's message. 
+After your response, on a new line, write either "INCLUDE_PRODUCTS" or "NO_PRODUCTS" 
+depending on whether you think product recommendations are relevant to this conversation."""
+
+    # Generate response using the model
+    response = model.generate_content(prompt)
+    
+    # Split the response into the actual reply and the product decision
+    full_response = response.text.strip().split('\n')
+    reply = '\n'.join(full_response[:-1])
+    product_decision = full_response[-1]
+
+    products = []
+    if product_decision.strip().upper() == "INCLUDE_PRODUCTS":
+        # Extract product names from the context (assuming they're in the first column)
+        products = results
+    
+    return {
+        "reply": reply,
+        "products": products
+    }

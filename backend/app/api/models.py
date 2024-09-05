@@ -9,3 +9,6 @@ class Product(BaseModel):
 
 class UserQuery(BaseModel):
     query: str
+
+class ChatRequest(BaseModel):
+    message: str

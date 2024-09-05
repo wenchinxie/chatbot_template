@@ -1,14 +1,10 @@
-import ChatInterface from "../components/ChatInterface";
-import ProductInfo from "../components/ProductInfo";
+import ChatAndProducts from '../components/ChatAndProducts';
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center p-6 bg-white text-red-800">
-      <h1 className="text-4xl font-bold mb-8 text-red-600">Richmond Travel Advisor</h1>
-      <div className="flex w-full max-w-7xl gap-6 h-[80vh]">
-        <ChatInterface className="flex-grow" />
-        <ProductInfo className="w-1/3 max-w-sm" />
-      </div>
+    <main className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Travel Chat</h1>
+      <ChatAndProducts />
     </main>
   );
 }
